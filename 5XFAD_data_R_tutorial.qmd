@@ -1,18 +1,13 @@
 ---
 title: "AD Knowledge Portal Workshop: Download and explore 5XFAD mouse data in RStudio"
-author: 
+
+author:
   - Abby Vander Linden (Sage Bionetworks)
   - Laura Heath (Sage Bionetworks)
   - Jaclyn Beck (Sage Bionetworks)
-date: "`r Sys.Date()`"
 ---
 
 ```{r, set-opts, include=FALSE}
-knitr::opts_chunk$set(
-  eval = TRUE,
-  print.rows = 10
-)
-
 # Prevent individual IDs from printing out in scientific notation
 options(scipen = 999)
 ```
@@ -169,7 +164,7 @@ Use the facets and search bar to look for data you want to download from the AD 
 
 In the window that pops up, select the "Python" tab from the top menu bar (or the "R" tab, if you use `synapser`). This will display some Python/R code that constructs a SQL query of the Synapse data table that drives the AD Knowledge Portal. This query will allow us to download only the files that meet our search criteria.
 
-![](images/download-programmatic-output-python.png){width="400"}
+![](images/download-programmatic-output-python.png){width="700"}
 
 **We'll download our files using two steps:**
 
@@ -187,7 +182,7 @@ Splitting this into steps can be extremely helpful for cases where you might not
 
 The function `syn$tableQuery()` returns a Synapse object wrapper around the CSV file, which is automatically downloaded to a folder called `.synapseCache` in your home directory. You can use `query$filepath` to see the path to the file in the Synapse cache.
 
-```{r portal-query}
+```{r portal-query, results = "hide"}
 # download the results of the filtered table query
 query_string <- paste(
   "SELECT * FROM syn11346063 WHERE (( `study` HAS ( 'Jax.IU.Pitt_5XFAD' ))",
@@ -195,8 +190,11 @@ query_string <- paste(
 )
 
 results <- syn$tableQuery(query_string, includeRowIdAndRowVersion = FALSE)
+```
 
-# view the file path of the resulting csv
+Filepath of the downloaded CSV:
+
+```{r}
 results$filepath
 ```
 
@@ -213,7 +211,7 @@ Let's look at a subset of columns that might be useful:
 
 ```{r view_download_table}
 download_table |>
-  dplyr::select(id, name, metadataType, assay, fileFormat, currentVersion)
+  select(id, name, metadataType, assay, fileFormat, currentVersion)
 ```
 
 **Tip:** Rename and save this file somewhere memorable to have a complete record of all the files you are using and what version of each file was downloaded – for reproducibility!
@@ -286,7 +284,7 @@ When bulk downloading many files, the best practice is to preserve the download 
 
 If we use the "Programmatic Options" tab in the AD Portal download menu to download all 149 rnaSeq files from the 5XFAD study, we would get a table query that looks like this:
 
-```{r all-rnaseq-portal-query}
+```{r all-rnaseq-portal-query, results = "hide"}
 query_str <- paste(
   "SELECT * FROM syn11346063 WHERE ( ( \"study\" HAS ( 'Jax.IU.Pitt_5XFAD' ) )",
   "AND ( \"assay\" HAS ( 'rnaSeq' ) ) )"
@@ -313,7 +311,7 @@ If we look at the processed data files in the table of 5XFAD RNAseq file annotat
 ```{r filter-multispecimen-files}
 annotations_table |>
   filter(fileFormat == "tsv") |>
-  dplyr::select(name, individualID, specimenID, isMultiSpecimen)
+  select(name, individualID, specimenID, isMultiSpecimen)
 ```
 
 The multispecimen file should contain a row or column of specimenIDs that correspond to the specimenIDs used in a study's metadata. **Note:** this study uses `individualIDs` instead, which is unusual. Most studies use `specimenID` for column names in data like this.
@@ -334,7 +332,7 @@ We can see from the `download_table` we got during the bulk download step that w
 
 ```{r explore-download-table}
 download_table |> 
-  dplyr::select(name, metadataType, assay)
+  select(name, metadataType, assay)
 ```
 
 We are only interested in RNAseq data, so we will only read in the individual, biospecimen, and RNAseq assay metadata files.
@@ -537,9 +535,8 @@ joined_meta |>
 To reduce the width of the dataframe, we will subset only the columns that contain covariates we're interested in exploring further. Retaining the individualID and specimenID columns will make sure we can map the covariates to the data and back to the original metadata if needed!
 
 ```{r subset-covars}
-# many packages have a "select" function that masks dplyr so we have to specify
 covars <- joined_meta |>
-  dplyr::select(individualID, specimenID, sex, genotype, age_group)
+  select(individualID, specimenID, sex, genotype, age_group)
 
 # check the result
 head(covars)
@@ -592,7 +589,7 @@ named_counts <- named_counts |>
          gene_name = make.unique(gene_name)) |>
   
   # Throw away Ensembl IDs and transcript IDs
-  dplyr::select(-gene_id, -`transcript_id(s)`) |>
+  select(-gene_id, -`transcript_id(s)`) |>
   
   # Set rownames to gene_name, also removes the gene_name column
   column_to_rownames(var = "gene_name")
@@ -626,7 +623,7 @@ Let's check that the covariates got included at the end by cutting out most of t
 
 ```{r check-transposed-counts-metadata, warning=FALSE}
 counts_tposed |>
-  dplyr::select(1:3, any_of(colnames(covars))) |>
+  select(1:3, any_of(colnames(covars))) |>
   head()
 ```
 

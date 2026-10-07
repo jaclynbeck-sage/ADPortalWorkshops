@@ -3,6 +3,9 @@ project:
   output-dir: docs
   render:
     - "5XFAD_data_R_tutorial.qmd"
+    - "Workshop2_DESeq.qmd"
+
+date: today
 
 format:
   html:
