@@ -5,16 +5,6 @@ author:
   - Laura Heath (Sage Bionetworks)
   - Jaclyn Beck (Sage Bionetworks)
 date: "`r Sys.Date()`"
-format: 
-  html: 
-    toc: true
-    toc-depth: 3
-    df-print: paged
-knit: (function(input_file, encoding) {
-   out_dir <- 'docs';
-   rmarkdown::render(input_file,
-     encoding=encoding,
-     output_file=file.path(dirname(input_file), out_dir, 'index.html'))})
 ---
 
 ```{r, set-opts, include=FALSE}
@@ -94,7 +84,7 @@ syncli <- import("synapseclient")
 
 Next, you will need to log in to your Synapse account.
 
-#### Login option 1: Synapser takes credentials from your Synapse web session
+#### Login option 1: Synapseclient takes credentials from your Synapse web session
 
 If you are logged into the [Synapse](https://www.synapse.org/) web browser, `synapseclient` will automatically use your login credentials to log you in during your R session! All you have to do is call `syn$login()` from a script or the R console.
 
@@ -250,10 +240,6 @@ for (syn_id in download_table$id) {
 
 Congratulations, you have bulk downloaded files from the AD Knowledge Portal!
 
-##### ✏ Note on download speeds
-
-For situations where you are downloading many large files, the R client performs substantially slower than the command line client or the Python client. In these cases, you can use the instructions and code snippets for the command line or Python client provided in the "Programmatic Options" menu.
-
 ##### ✏ Note on file versions
 
 All files in the AD Portal are versioned, meaning that if the file represented by a particular synID changes, a new version will be created. To download a specific version, set the `version` argument in `syn$get()`. More info on version control in the AD Portal and the Synapse platform can be found [here](https://docs.synapse.org/synapse-docs/versioning-files).
@@ -379,7 +365,7 @@ It's good practice to use the `$path` variable from the output of `syn$get()` in
 
 ```{r download-best-practices, eval=FALSE}
 ind_file_id <- subset(download_table, metadataType == "individual")$id
-bio_file_id <- subset(download_table, metadataType == "individual")$id
+bio_file_id <- subset(download_table, metadataType == "biospecimen")$id
 assay_file_id <- subset(download_table, metadataType == "assay metadata" &
                        grepl("rnaSeq", assay))$id
 
@@ -531,10 +517,11 @@ This study has three main age groups, but the ages of the mice are non-integer v
 
 ```{r, add-age-group-column, warning = FALSE, message = FALSE}
 joined_meta <- joined_meta |>
-  # convert numeric ages to age_group categories
-  mutate(age_group = case_when(ageDeath > 10 ~ "12 mo",
-                               ageDeath < 10 & ageDeath > 5 ~ "6 mo",
-                               ageDeath < 5 ~ "4 mo"))
+  # convert numeric ages to age_group categories --
+  # <= 5: 4 mo, > 5 and <= 10: 6 mo, > 10: 12 mo
+  mutate(age_group = cut(ageDeath,
+                         breaks = c(0, 5, 10, Inf),
+                         labels = c("4 mo", "6 mo", "12 mo")))
 ```
 
 We now have balanced samples across sex, genotype, and age:
@@ -558,7 +545,7 @@ covars <- joined_meta |>
 head(covars)
 ```
 
-### Convert ensembleIDs to common gene names
+### Convert ensemblIDs to common gene names
 
 Return to the gene counts matrix we read in earlier. 5XFAD mice express human APP and PSEN1, and the counts matrix includes these human genes (recognizable as starting with `ENSG` instead of `ENSMUS`):
 
@@ -654,7 +641,7 @@ counts_tposed$age_group <- factor(counts_tposed$age_group,
 
 Use ggplot to plot gene counts for each specimen by age, sex, and genotype.
 
-```{r plot-app}
+```{r plot-APP}
 # Look at APP levels -- this model is the 5X FAD mutant, so we expect it to be high!
 g <- counts_tposed |>
   ggplot(aes(x = age_group, y = APP, color = genotype)) +

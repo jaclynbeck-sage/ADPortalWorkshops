@@ -1,3 +1,11 @@
 project:
   type: website
   output-dir: docs
+  render:
+    - "5XFAD_data_R_tutorial.qmd"
+
+format:
+  html:
+    toc: true
+    toc-depth: 3
+    df-print: paged
