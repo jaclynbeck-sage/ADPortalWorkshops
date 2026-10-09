@@ -68,11 +68,12 @@ library(ggplot2)
 # other Python installations or environments on your computer
 Sys.setenv(RETICULATE_USE_MANAGED_VENV = "yes")
 
-# Install Python and synapseclient, if needed, and activate the environment
-py_require("synapseclient")
+# Install Python, synapseclient, and pandas, if needed, and activate the environment
+py_require(c("synapseclient", "pandas"))
 
 # python import
 syncli <- import("synapseclient")
+builtins <- import("builtins")
 ```
 
 ### Login to Synapse
@@ -109,41 +110,35 @@ While you can always download data from the AD Portal website via your web brows
 
 ### Download a single file
 
-To download a single file from the AD Knowledge Portal, copy its Synapse ID from the search results in the portal or go directly to the file's page in Synapse to find its ID. Then use the `syn$get()` function from `synapseclient` to download the file.
+To download a single file from the AD Knowledge Portal, copy its Synapse ID from the search results in the portal or go directly to the file's page in Synapse to find its ID. Then use the `get()` function from `synapseclient` to download the file.
 
 #### Exercise 1: Use [Explore Data](https://adknowledgeportal.synapse.org/Explore/Data) to find processed RNAseq data from the Jax.IU.Pitt_5XFAD Study
 
-This exercise filters the table to four files. We will download `rnaseq_rsem.merged.gene_counts.tsv'. The Synapse ID for this file is in the "Id" column.
+This exercise filters the table to four files. We will download `rnaseq_rsem.merged.gene_counts.tsv`. The Synapse ID for this file is in the "Id" column.
 
 ![](images/portal-search-counts-file.png){width="800"}
 
 We can then use that synID to download the file. Some information about the file and its storage location within Synapse is assigned to the variable `counts_file`.
 
-```{r single-synGet, results = "hide"}
+```{r single-synGet}
+#| output: false
 counts_id <- "syn63855360"
 counts_file <- syn$get(counts_id,
                        downloadLocation = "files/",
                        ifcollision = "overwrite.local")
 ```
 
-The `if_collision="overwrite.local"` argument overwrites any local copies with the same name/path on your computer, avoiding multiple copies piling up. The client checks the local file against the Synapse version and downloads it only when needed.
+The `ifcollision="overwrite.local"` argument overwrites any local copies with the same name/path on your computer, avoiding multiple copies piling up. The client checks the local file against the Synapse version and downloads it only when needed.
 
 This is very useful for large files especially: you can ensure that you always have the latest copy of a file from Synapse, without having to re-download the file if you already have the current version on your hard drive.
 
 The variable `counts_file` is a Synapse `File` entity object. Its attributes include `.path`, `.annotations`, and `.version_number`, which contain information about where the file is in Synapse, how it is labeled, what version it is, etc.
 
-Synapse ID of the file:
+Some info on the file from Synapse:
+
 ```{r}
 counts_file$id
-```
-
-The local path where the file was download:
-```{r}
 counts_file$path
-```
-
-The file version:
-```{r}
 counts_file$versionNumber
 ```
 
@@ -168,11 +163,11 @@ In the window that pops up, select the "Python" tab from the top menu bar (or th
 
 **We'll download our files using two steps:**
 
-1.  We will use the `syn$tableQuery()` code the portal gave us to download a CSV file that lists all of the files we want. This CSV file is a table, one row per file in the list, containing the Synapse ID, file name, annotations, etc associated with each file.
+1.  We will use the `tableQuery()` code the portal gave us to download a CSV file that lists all of the files we want. This CSV file is a table, one row per file in the list, containing the Synapse ID, file name, annotations, etc associated with each file.
 
     a.  This does NOT download the files themselves. It only fetches a list of the files plus their annotations for you.
 
-2.  We will call `syn$get()` on each Synapse ID in the table to download the files.
+2.  We will call `get()` on each Synapse ID in the table to download the files.
 
 **Why isn't this just one step instead of two?**
 
@@ -180,16 +175,22 @@ Splitting this into steps can be extremely helpful for cases where you might not
 
 **Back to downloading...**
 
-The function `syn$tableQuery()` returns a Synapse object wrapper around the CSV file, which is automatically downloaded to a folder called `.synapseCache` in your home directory. You can use `query$filepath` to see the path to the file in the Synapse cache.
+The function `tableQuery()` returns an object with information about the downloaded results file. If no `downloadLocation` is specified, the file is automatically downloaded to a folder called `.synapseCache` in your home directory.
 
-```{r portal-query, results = "hide"}
+```{r portal-query}
+#| output: false
+
 # download the results of the filtered table query
 query_string <- paste(
-  "SELECT * FROM syn11346063 WHERE (( `study` HAS ( 'Jax.IU.Pitt_5XFAD' ))",
-  "AND ( `resourceType` = 'metadata' ) )"
+  "SELECT * FROM syn11346063.88 WHERE ( ( \"resourceType\" = 'metadata' ) AND ",
+  "( \"study\" HAS ( 'Jax.IU.Pitt_5XFAD' ) ) )"
 )
 
-results <- syn$tableQuery(query_string, includeRowIdAndRowVersion = FALSE)
+results <- syn$tableQuery(
+  query_string,
+  includeRowIdAndRowVersion = FALSE, 
+  downloadLocation = "files/"
+)
 ```
 
 Filepath of the downloaded CSV:
@@ -198,11 +199,11 @@ Filepath of the downloaded CSV:
 results$filepath
 ```
 
-We'll use `read_csv` (from the `readr` package) to read the CSV file into R (although the provided `read.table` or any other base R version is also fine!). We can explore the `download_table` object and see that it contains information on all of the AD Portal data files we want to download. Some columns like the "id" and "parentId" columns contain info about where the file is in Synapse, and some columns contain AD Portal annotations for each file, like "dataType", "specimenID", and "assay". This annotation table will later allow us to link downloaded files to additional metadata variables!
+We can directly convert `results` into a data frame to work with it. Exploring the table, we and see that it contains information on all of the AD Portal data files we want to download. Some columns like the "id" and "parentId" columns contain info about where the file is in Synapse, and some columns contain AD Portal annotations for each file, like "dataType", "specimenID", and "assay". This annotation table will later allow us to link downloaded files to additional metadata variables!
 
 ```{r read-query-table}
 # read in the table query csv file
-download_table <- read_csv(results$filepath, show_col_types = FALSE)
+download_table <- results$asDataFrame()
 
 download_table
 ```
@@ -220,7 +221,9 @@ download_table |>
 
 Finally, we use a mapping function from the `purrr` package to loop through the "id" column and apply the `syn$get()` function to each file's synID. In this case, we use `purrr::walk()` because it lets us call `syn$get()` for its side effect (downloading files to a location we specify), and returns nothing.
 
-```{r bulk-download-purrr, results="hide"}
+```{r bulk-download-purrr}
+#| output: false
+
 # loop through the column of synIDs and download each file
 purrr::walk(download_table$id, ~syn$get(.x, downloadLocation = "files/",
                                         ifcollision = "overwrite.local"))
@@ -252,16 +255,18 @@ If we filter for data where Study = "Jax.IU.Pitt_5XFAD" and Assay = "rnaSeq" we 
 
 #### Synapse entity annotations
 
-We can use the function `syn$get_annotations` to view the annotations associated with any file *before* actually downloading the file.
+We can use the function `get_annotations()` to view the annotations associated with any file *before* actually downloading the file.
 
 ```{r json-single-file-annotations}
 # the synID of a random fastq file from this list
 fastq_id <- "syn22108503"
 
-# this is a python dict
+# this is an Annotations object that wraps a python dict, and is usable as a
+# named list
 fastq_annotations <- syn$get_annotations(fastq_id)
 
-names(fastq_annotations)
+# Use Python's print(), this object doesn't print its values in R's print() function
+builtins$print(fastq_annotations)
 
 # Access values by key like you would a named list
 print(paste("individualID:", fastq_annotations$individualID))
@@ -278,6 +283,8 @@ ind_meta <- read_csv("files/individual_animal_metadata_Jax.IU.Pitt_5XFAD.csv",
 filter(ind_meta, individualID == fastq_annotations$individualID)
 ```
 
+**⚠ Caution:** In this study, the individualIDs are numbers, and may be treated differently depending on how you get the data. Always check that the fields are the same type before comparison.
+
 #### Annotations during bulk download
 
 When bulk downloading many files, the best practice is to preserve the download manifest that is generated which lists all the files, their synIDs, and all their annotations.
@@ -286,21 +293,23 @@ If we use the "Programmatic Options" tab in the AD Portal download menu to downl
 
 ```{r all-rnaseq-portal-query, results = "hide"}
 query_str <- paste(
-  "SELECT * FROM syn11346063 WHERE ( ( \"study\" HAS ( 'Jax.IU.Pitt_5XFAD' ) )",
-  "AND ( \"assay\" HAS ( 'rnaSeq' ) ) )"
+  "SELECT * FROM syn11346063.88 WHERE ( ( \"assay\" HAS ( 'rnaSeq' ) ) AND ",
+  "( \"study\" HAS ( 'Jax.IU.Pitt_5XFAD' ) ) )"
 )
-results <- syn$tableQuery(query_str, includeRowIdAndRowVersion = FALSE)
+results <- syn$tableQuery(query_str, 
+                          includeRowIdAndRowVersion = FALSE, 
+                          downloadLocation = "files/")
 ```
 
-As we saw previously, this downloads a csv file with the results of our AD Portal query. Opening that file lets us see which specimens are associated with which files:
+As before, this downloads a csv file with the results of our AD Portal query. We can see which specimens are associated with which files:
 
 ```{r read-annotations-table, warning = FALSE, message = FALSE}
-annotations_table <- read_csv(results$filepath, show_col_types = FALSE)
+annotations_table <- results$asDataFrame()
 
 head(annotations_table)
 ```
 
-You could then use `purrr::walk(download_table$id, ~syn$get(.x, downloadLocation = <your-download-directory>))` to walk through the column of synIDs and download all 149 files.
+You could then use `purrr::walk()` as we did in the [Bulk download files](#bulk-download-files) example to walk through the column of synIDs and download all 149 files.
 
 ### Multispecimen files
 
@@ -335,6 +344,17 @@ download_table |>
   select(name, metadataType, assay)
 ```
 
+The assay values are all 1-item lists. Let's pull those values out so we can see them:
+
+```{r}
+download_table$assay <- sapply(download_table$assay, function(items) {
+  ifelse(length(items) == 0, NA, items[1])
+})
+
+download_table |> 
+  select(name, metadataType, assay)
+```
+
 We are only interested in RNAseq data, so we will only read in the individual, biospecimen, and RNAseq assay metadata files.
 
 Now we can read all the metadata files in to R as data frames. Here we have to force `readr` to treat the individualID column as a string, because individualIDs in this study are strings of numbers.
@@ -364,10 +384,12 @@ It's good practice to use the `$path` variable from the output of `syn$get()` in
 ```{r download-best-practices, eval=FALSE}
 ind_file_id <- subset(download_table, metadataType == "individual")$id
 bio_file_id <- subset(download_table, metadataType == "biospecimen")$id
-assay_file_id <- subset(download_table, metadataType == "assay metadata" &
-                       grepl("rnaSeq", assay))$id
+assay_file_id <- subset(download_table, metadataType == "assay metadata" & 
+                          assay == "rnaSeq")$id
 
-ind_file <- syn$get(ind_file_id)
+ind_file <- syn$get(ind_file_id, 
+                    downloadLocation = "files/", 
+                    ifcollision = "overwrite.local")
 ind_meta <- read_csv(ind_file$path,
                      col_types = list(individualID = col_character()),
                      show_col_types = FALSE)
@@ -401,6 +423,7 @@ all(colnames(counts)[c(-1, -2)] %in% rna_meta$specimenID)
 ```
 
 No, because these are individualIDs, which are in the individual metadata file:
+
 ```{r}
 all(colnames(counts)[c(-1, -2)] %in% ind_meta$individualID)
 ```
@@ -439,12 +462,8 @@ all(rna_meta$specimenID %in% bio_meta$specimenID)
 
 ```{r}
 all(bio_meta$specimenID %in% rna_meta$specimenID)
-```
-
-```{r}
 unique(bio_meta$assay)
 ```
-
 
 #### Individual metadata
 
@@ -511,12 +530,10 @@ For this example, we will plot gene expression by sex, genotype, and age.
 
 #### Create age group column
 
-This study has three main age groups, but the ages of the mice are non-integer values. Here we bin the ages into groups.
+This study has three main age groups, but the ages of the mice are non-integer values. Here we bin the ages into groups where age <= 5: 4 months, > 5 and <= 10: 6 mo, and > 10: 12 months.
 
 ```{r, add-age-group-column, warning = FALSE, message = FALSE}
 joined_meta <- joined_meta |>
-  # convert numeric ages to age_group categories --
-  # <= 5: 4 mo, > 5 and <= 10: 6 mo, > 10: 12 mo
   mutate(age_group = cut(ageDeath,
                          breaks = c(0, 5, 10, Inf),
                          labels = c("4 mo", "6 mo", "12 mo")))
@@ -538,7 +555,6 @@ To reduce the width of the dataframe, we will subset only the columns that conta
 covars <- joined_meta |>
   select(individualID, specimenID, sex, genotype, age_group)
 
-# check the result
 head(covars)
 ```
 
@@ -554,7 +570,7 @@ counts |>
 
 For display, we want to map all Ensembl IDs to their gene symbols. There are several R libraries that will let you query for this information, but for this workshop we will use a pre-made mapping file.
 
-```{r read-preconverted-ensembl-counts}
+```{r read-ensembl-translation}
 ensembl_to_gene <- read.csv(file = "ensembl_translation_key.csv")
 named_counts <- counts |>
   dplyr::left_join(ensembl_to_gene, by = "gene_id") |>
@@ -577,7 +593,7 @@ non_na_genes <- named_counts$gene_name[!is.na(named_counts$gene_name) &
 length(non_na_genes) - n_distinct(non_na_genes)
 ```
 
-We need to append unique identifiers to the duplicate names so we can transpose the matrix.
+We need to clean up missing gene names and append unique identifiers to the duplicate names.
 
 ```{r clean-gene-names}
 # Make all gene names unique and remove unneeded column
@@ -597,9 +613,13 @@ named_counts <- named_counts |>
 head(named_counts)
 ```
 
+### Visualize gene count data
+
+We now have a nicely formatted data frame with gene symbols as the row names, and specimenIDs as the column names. From here you could save the counts data frame and joined metadata data frame for plotting elsewhere (i.e. stats software), or you can use `ggplot2` or other plotting libraries in R.
+
 #### Transpose counts matrix and join to covariates
 
-First, we need to transpose the counts dataframe so that each row contains count data cross all genes for an individual, and join our covariates by ID.
+First, we need to transpose the counts dataframe so that each row contains count data cross all genes for an individual, and join our covariates by specimenID.
 
 **Note:** most studies in the ADKP use the `specimenID` to label columns in their data files. This study used `individualID` values instead, so we are joining on individualID.
 
@@ -612,10 +632,7 @@ counts_tposed <- named_counts |>
   # For most studies this would join on specimenID instead:
   #as_tibble(rownames = "specimenID") |>
   #left_join(covars, by = "specimenID")
-```
 
-```{r check-transposed-counts}
-# check the transposed matrix looks ok
 head(counts_tposed)
 ```
 
@@ -651,7 +668,7 @@ g <- counts_tposed |>
 g
 ```
 
-Examine any gene of interest by setting the y argument in the `ggplot(aes()` mapping equal to the gene name. Ex: `y = Trem2`
+Examine any gene of interest by setting the y argument in the `aes()` mapping equal to the gene name. Example: `y = Trem2`
 
 ```{r plot-Trem2}
 g <- counts_tposed |>
@@ -665,7 +682,7 @@ g <- counts_tposed |>
 g
 ```
 
-Ex: `y = Apoe`
+Example: `y = Apoe`
 
 ```{r plot-Apoe}
 g <- counts_tposed |>
